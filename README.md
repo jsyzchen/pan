@@ -16,7 +16,7 @@ import (
 ```
 ### 不使用 Go mod
 ```bash
-go get -u github.com/jsyzchen/pan
+go get -u github.com/jsyzchen/pan/file
 ```
 
 ## 使用示例
