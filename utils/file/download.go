@@ -15,7 +15,7 @@ import (
 )
 
 //FileDownloader 文件下载器
-type FileDownloader struct {
+type Downloader struct {
 	fileSize       int
 	url            string
 	filePath 	   string
@@ -32,8 +32,8 @@ type filePart struct {
 }
 
 //NewFileDownloader .
-func NewFileDownloader(url, filePath string, totalPart int) *FileDownloader {
-	return &FileDownloader{
+func NewFileDownloader(url, filePath string, totalPart int) *Downloader {
+	return &Downloader{
 		fileSize:       0,
 		url:            url,
 		filePath: 		filePath,
@@ -43,7 +43,7 @@ func NewFileDownloader(url, filePath string, totalPart int) *FileDownloader {
 }
 
 //Run 开始下载任务
-func (d *FileDownloader) Download() error {
+func (d *Downloader) Download() error {
 	if d.totalPart == 1 {
 		err := d.downloadWholeFile()
 		return err
@@ -97,7 +97,7 @@ func (d *FileDownloader) Download() error {
 }
 
 //head 获取要下载的文件的基本信息(header) 使用HTTP Method Head
-func (d *FileDownloader) head() (bool, error) {
+func (d *Downloader) head() (bool, error) {
 	isSupportRange := false
 	r, err := d.getNewRequest("HEAD")
 	if err != nil {
@@ -126,7 +126,7 @@ func (d *FileDownloader) head() (bool, error) {
 }
 
 //下载分片
-func (d *FileDownloader) downloadPart(c filePart) error {
+func (d *Downloader) downloadPart(c filePart) error {
 	r, err := d.getNewRequest("GET")
 	if err != nil {
 		return err
@@ -154,7 +154,7 @@ func (d *FileDownloader) downloadPart(c filePart) error {
 }
 
 //mergeFileParts 合并下载的文件
-func (d *FileDownloader) mergeFileParts() error {
+func (d *Downloader) mergeFileParts() error {
 	log.Println("开始合并文件")
 	mergedFile, err := os.Create(d.filePath)
 	if err != nil {
@@ -173,7 +173,7 @@ func (d *FileDownloader) mergeFileParts() error {
 }
 
 //直接下载整个文件
-func (d *FileDownloader) downloadWholeFile() error {
+func (d *Downloader) downloadWholeFile() error {
 	url := d.url
 
 	// Get the data
@@ -200,7 +200,7 @@ func (d *FileDownloader) downloadWholeFile() error {
 }
 
 // getNewRequest 创建一个request
-func (d *FileDownloader) getNewRequest(method string) (*http.Request, error) {
+func (d *Downloader) getNewRequest(method string) (*http.Request, error) {
 	r, err := http.NewRequest(
 		method,
 		d.url,

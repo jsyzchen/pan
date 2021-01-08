@@ -100,7 +100,7 @@ func (f *File) List(dir string, start, limit int) (ListResponse, error) {
 }
 
 // 获取文件信息
-func (f *File) Metas(fsIDs []uint64, isReturnDLink, isReturnThumb int) (MetasResponse, error) {
+func (f *File) Metas(fsIDs []uint64) (MetasResponse, error) {
 	ret := MetasResponse{}
 
 	fsIDsByte, err := json.Marshal(fsIDs)
@@ -111,8 +111,9 @@ func (f *File) Metas(fsIDs []uint64, isReturnDLink, isReturnThumb int) (MetasRes
 	v := url.Values{}
 	v.Add("access_token", f.AccessToken)
 	v.Add("fsids", string(fsIDsByte))
-	v.Add("dlink", strconv.Itoa(isReturnDLink))
-	v.Add("thumb", strconv.Itoa(isReturnThumb))
+	v.Add("dlink", "1")
+	v.Add("thumb", "1")
+	v.Add("extra", "1")
 	query := v.Encode()
 
 	requestUrl := conf.OpenApiDomain + MetasUri + "&" + query

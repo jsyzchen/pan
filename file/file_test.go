@@ -16,7 +16,7 @@ func TestFile_List(t *testing.T) {
 
 func TestFile_Metas(t *testing.T) {
 	fileClient := NewFileClient(conf.TestData.AccessToken)
-	res, err := fileClient.Metas([]uint64{conf.TestData.FsID}, 0, 0)
+	res, err := fileClient.Metas([]uint64{conf.TestData.FsID})
 	if err != nil {
 		t.Errorf("TestMetas failed, err:%v", err)
 	}
