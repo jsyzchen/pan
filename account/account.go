@@ -8,6 +8,7 @@ import (
 	"github.com/jsyzchen/pan/utils/httpclient"
 	"log"
 	"net/url"
+	"strconv"
 )
 
 type UserInfoResponse struct {
@@ -18,7 +19,8 @@ type UserInfoResponse struct {
 	Uk int `json:"uk"` //uk字段对应auth.UserInfo方法返回的user_id
 	ErrorCode int  	 `json:"errno"`
 	ErrorMsg  string `json:"errmsg"`
-	RequestID string `json:"request_id"`
+	RequestID int
+	RequestIDStr string `json:"request_id"` //用户信息接口返回的request_id为string类型
 }
 
 type QuotaResponse struct {
@@ -69,6 +71,13 @@ func (a *Account) UserInfo() (UserInfoResponse, error) {
 		return ret, errors.New(fmt.Sprintf("error_code:%d, error_msg:%s", ret.ErrorCode, ret.ErrorMsg))
 	}
 
+	//兼容用户信息接口返回的request_id为string类型的问题
+	ret.RequestID, err = strconv.Atoi(ret.RequestIDStr)
+	if err != nil {
+		log.Println("strconv.Atoi failed, err:", err)
+		return ret, err
+	}
+
 	return ret, nil
 }
 
@@ -88,8 +97,6 @@ func (a *Account) Quota() (QuotaResponse, error) {
 		log.Println("httpclient.Get failed, err:", err)
 		return ret, err
 	}
-
-	fmt.Println(string(resp.Body))
 
 	if resp.StatusCode != 200 {
 		return ret, errors.New(fmt.Sprintf("HttpStatusCode is not equal to 200, httpStatusCode[%d], respBody[%s]", resp.StatusCode, string(resp.Body)))

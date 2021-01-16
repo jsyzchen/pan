@@ -3,7 +3,6 @@ package file
 import (
 	"errors"
 	"fmt"
-	"github.com/jsyzchen/pan/utils/httpclient"
 	"io"
 	"io/ioutil"
 	"log"
@@ -16,15 +15,16 @@ import (
 
 //FileDownloader 文件下载器
 type Downloader struct {
-	fileSize       int
-	url            string
-	filePath 	   string
-	totalPart      int //下载线程
-	doneFilePart   []filePart
+	FileSize       int
+	Link            string
+	FilePath 	   string
+	TotalPart      int //下载线程
+	DoneFilePart   []Part
+	PartSize int
 }
 
 //filePart 文件分片
-type filePart struct {
+type Part struct {
 	Index int    //文件分片的序号
 	From  int    //开始byte
 	To    int    //解决byte
@@ -32,39 +32,59 @@ type filePart struct {
 }
 
 //NewFileDownloader .
-func NewFileDownloader(url, filePath string, totalPart int) *Downloader {
+func NewFileDownloader(downloadLink, filePath string) *Downloader {
 	return &Downloader{
-		fileSize:       0,
-		url:            url,
-		filePath: 		filePath,
-		totalPart:      totalPart,
-		doneFilePart:   make([]filePart, totalPart),
+		FileSize:       0,
+		Link:           downloadLink,
+		FilePath: 		filePath,
 	}
+}
+
+func (d *Downloader) SetTotalPart(totalPart int)  {
+	d.TotalPart = totalPart
+}
+
+func (d *Downloader) SetPartSize(PartSize int) {
+	d.PartSize = PartSize
 }
 
 //Run 开始下载任务
 func (d *Downloader) Download() error {
-	if d.totalPart == 1 {
-		err := d.downloadWholeFile()
+	if d.TotalPart == 1 {
+		err := d.downloadWhole()
 		return err
 	}
 	isSupportRange, err := d.head()
 	if err != nil {
 		return err
 	}
-	fileTotalSize := d.fileSize
-	smallFileSize := 2097152 // 2M
-	if isSupportRange == false || fileTotalSize <= smallFileSize {//不支持Range下载或者文件比较小，直接下载文件
-		err := d.downloadWholeFile()
+	log.Println("isSupportRange:", isSupportRange)
+
+	fileTotalSize := d.FileSize
+	if d.PartSize == 0 {
+		d.PartSize = 10485760 // 10M
+	}
+
+	if isSupportRange == false || fileTotalSize <= d.PartSize {//不支持Range下载或者文件比较小，直接下载文件
+		err := d.downloadWhole()
 		return err
 	}
 
-	if fileTotalSize / smallFileSize < d.totalPart {//减少range请求次数
-		d.totalPart = int(math.Ceil(float64(fileTotalSize) / float64(smallFileSize)))
+	log.Println("downloadPart")
+
+	if d.TotalPart == 0 || fileTotalSize / d.PartSize < d.TotalPart {//减少range请求次数
+		d.TotalPart = int(math.Ceil(float64(fileTotalSize) / float64(d.PartSize)))
+	}
+	maxTotalPart := 100
+	if d.TotalPart > maxTotalPart {//限制分片数量
+		d.TotalPart = maxTotalPart
 	}
 
-	jobs := make([]filePart, d.totalPart)
-	eachSize := fileTotalSize / d.totalPart
+	log.Println("TotalPart:", d.TotalPart)
+
+	d.DoneFilePart = make([]Part, d.TotalPart)
+	jobs := make([]Part, d.TotalPart)
+	eachSize := fileTotalSize / d.TotalPart
 
 	for i := range jobs {
 		jobs[i].Index = i
@@ -73,7 +93,7 @@ func (d *Downloader) Download() error {
 		} else {
 			jobs[i].From = jobs[i-1].To + 1
 		}
-		if i < d.totalPart - 1 {
+		if i < d.TotalPart - 1 {
 			jobs[i].To = jobs[i].From + eachSize
 		} else {
 			//the last filePart
@@ -82,17 +102,24 @@ func (d *Downloader) Download() error {
 	}
 
 	var wg sync.WaitGroup
-	for _, j := range jobs {
+	isFailed := false
+	for _, job := range jobs {
 		wg.Add(1)
-		go func(job filePart) {
+		go func(job Part) {
 			defer wg.Done()
 			err := d.downloadPart(job)
 			if err != nil {
 				log.Println("下载文件失败:", err, job)
+				isFailed = true //TODO 可能会有问题
 			}
-		}(j)
+		}(job)
 	}
 	wg.Wait()
+	if isFailed == true {
+		log.Println("下载文件失败")
+		return errors.New("downloadPart failed")
+	}
+
 	return d.mergeFileParts()
 }
 
@@ -108,7 +135,7 @@ func (d *Downloader) head() (bool, error) {
 		return isSupportRange, err
 	}
 	if resp.StatusCode > 299 {
-		return isSupportRange, errors.New(fmt.Sprintf("Can't process, response is %v", resp.StatusCode))
+		return isSupportRange, errors.New(fmt.Sprintf("Can't process, response is %v", resp))
 	}
 	//检查是否支持 断点续传
 	if resp.Header.Get("Accept-Ranges") == "bytes" {
@@ -120,13 +147,13 @@ func (d *Downloader) head() (bool, error) {
 	if err != nil {
 		return isSupportRange, err
 	}
-	d.fileSize = contentLength
+	d.FileSize = contentLength
 
 	return isSupportRange, nil
 }
 
 //下载分片
-func (d *Downloader) downloadPart(c filePart) error {
+func (d *Downloader) downloadPart(c Part) error {
 	r, err := d.getNewRequest("GET")
 	if err != nil {
 		return err
@@ -149,32 +176,34 @@ func (d *Downloader) downloadPart(c filePart) error {
 		return errors.New("下载文件分片长度错误")
 	}
 	c.Data = bs
-	d.doneFilePart[c.Index] = c
+	d.DoneFilePart[c.Index] = c
+	log.Printf("结束[%d]下载from:%d to:%d\n", c.Index, c.From, c.To)
 	return nil
 }
 
 //mergeFileParts 合并下载的文件
 func (d *Downloader) mergeFileParts() error {
 	log.Println("开始合并文件")
-	mergedFile, err := os.Create(d.filePath)
+	mergedFile, err := os.Create(d.FilePath)
 	if err != nil {
 		return err
 	}
 	defer mergedFile.Close()
 	totalSize := 0
-	for _, s := range d.doneFilePart {
+	for _, s := range d.DoneFilePart {
 		mergedFile.Write(s.Data)
 		totalSize += len(s.Data)
 	}
-	if totalSize != d.fileSize {
+	if totalSize != d.FileSize {
 		return errors.New("文件不完整")
 	}
 	return nil
 }
 
 //直接下载整个文件
-func (d *Downloader) downloadWholeFile() error {
-	url := d.url
+func (d *Downloader) downloadWhole() error {
+	log.Println("downloadWhole")
+	url := d.Link
 
 	// Get the data
 	resp, err := http.Get(url)
@@ -184,7 +213,7 @@ func (d *Downloader) downloadWholeFile() error {
 	defer resp.Body.Close()
 
 	// 创建一个文件用于保存
-	out, err := os.Create(d.filePath)
+	out, err := os.Create(d.FilePath)
 	if err != nil {
 		return err
 	}
@@ -203,15 +232,13 @@ func (d *Downloader) downloadWholeFile() error {
 func (d *Downloader) getNewRequest(method string) (*http.Request, error) {
 	r, err := http.NewRequest(
 		method,
-		d.url,
+		d.Link,
 		nil,
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	//随机设置一个User-Agent
-	userAgent := httpclient.GetRandomUserAgent()
-	r.Header.Set("User-Agent", userAgent)
+	r.Header.Set("User-Agent", "pan.baidu.com")
 	return r, nil
 }

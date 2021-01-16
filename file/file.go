@@ -37,7 +37,10 @@ type ListResponse struct {
 }
 
 type MetasResponse struct {
-	conf.CloudDiskResponseBase
+	ErrorCode int  	 `json:"errno"`
+	ErrorMsg  string `json:"errmsg"`
+	RequestID int
+	RequestIDStr string `json:"request_id"`
 	List []struct {
 		FsID 	uint64 `json:"fs_id"`
 		Path      string `json:"path"`
@@ -53,6 +56,15 @@ type MetasResponse struct {
 		DateTaken int `json:"date_taken"`
 		Width int `json:"width"`
 		Height int `json:"height"`
+	}
+}
+
+type ManagerResponse struct {
+	conf.CloudDiskResponseBase
+	Info []struct{
+		Path string
+		TaskID int
+		Errno int
 	}
 }
 
@@ -99,7 +111,7 @@ func (f *File) List(dir string, start, limit int) (ListResponse, error) {
 	return ret, nil
 }
 
-// 获取文件信息
+// 通过FsID获取文件信息
 func (f *File) Metas(fsIDs []uint64) (MetasResponse, error) {
 	ret := MetasResponse{}
 
@@ -135,11 +147,16 @@ func (f *File) Metas(fsIDs []uint64) (MetasResponse, error) {
 		return ret, errors.New(fmt.Sprintf("error_code:%d, error_msg:%s", ret.ErrorCode, ret.ErrorMsg))
 	}
 
+	ret.RequestID, err = strconv.Atoi(ret.RequestIDStr)
+	if err != nil {
+		return ret, err
+	}
+
 	return ret, nil
 }
 
 // 获取音视频在线播放地址，转码类型有M3U8_AUTO_480=>视频ts、M3U8_FLV_264_480=>视频flv、M3U8_MP3_128=>音频mp3、M3U8_HLS_MP3_128=>音频ts
-func (f *File) Streaming(path string, transcodingType string) (string, error){
+func (f *File) Streaming(path string, transcodingType string) (string, error) {
 	ret := ""
 
 	v := url.Values{}
