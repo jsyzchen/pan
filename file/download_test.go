@@ -7,7 +7,7 @@ import (
 
 func TestDownload(t *testing.T) {
 	fileDownloader := NewDownloaderWithFsID(conf.TestData.AccessToken, conf.TestData.FsID, conf.TestData.LocalFilePath)
-	err := fileDownloader.download()
+	err := fileDownloader.Download()
 	if err != nil {
 		t.Fail()
 	} else {

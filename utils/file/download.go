@@ -9,8 +9,10 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"path"
 	"strconv"
 	"sync"
+	"time"
 )
 
 //FileDownloader 文件下载器
@@ -29,6 +31,7 @@ type Part struct {
 	From  int    //开始byte
 	To    int    //解决byte
 	Data  []byte //http下载得到的文件内容
+	FilePath string //下载到本地的分片文件路径
 }
 
 //NewFileDownloader .
@@ -100,6 +103,9 @@ func (d *Downloader) Download() error {
 			jobs[i].To = fileTotalSize - 1
 		}
 	}
+
+	// 删除临时文件
+	defer d.removePartFiles()
 
 	var wg sync.WaitGroup
 	isFailed := false
@@ -175,8 +181,30 @@ func (d *Downloader) downloadPart(c Part) error {
 	if len(bs) != (c.To - c.From + 1) {
 		return errors.New("下载文件分片长度错误")
 	}
-	c.Data = bs
+	//c.Data = bs
+
+	//分片文件写入到本地临时目录
+	fileName := path.Base(d.FilePath)
+	fileNamePrefix := fileName[0:len(path.Base(d.FilePath)) - len(path.Ext(d.FilePath))]
+	nowTime := time.Now().UnixNano() / 1e6
+	partFilePath := path.Join(os.TempDir(), fileNamePrefix + "_" + strconv.Itoa(c.Index) + "_" + strconv.FormatInt(nowTime, 10))
+	f, err := os.Create(partFilePath)
+	if err != nil {
+		log.Println("open file error :", err)
+		return err
+	}
+	// 关闭文件
+	defer f.Close()
+	// 字节方式写入
+	_, err = f.Write(bs)
+	if err != nil {
+		log.Println(err)
+		return err
+	}
+	c.FilePath = partFilePath
+
 	d.DoneFilePart[c.Index] = c
+
 	log.Printf("结束[%d]下载from:%d to:%d\n", c.Index, c.From, c.To)
 	return nil
 }
@@ -191,8 +219,14 @@ func (d *Downloader) mergeFileParts() error {
 	defer mergedFile.Close()
 	totalSize := 0
 	for _, s := range d.DoneFilePart {
-		mergedFile.Write(s.Data)
-		totalSize += len(s.Data)
+		data, err := ioutil.ReadFile(s.FilePath)
+		if err != nil {
+			log.Println("ioutil.ReadFile err:", err)
+			return err
+		}
+
+		mergedFile.Write(data)
+		totalSize += len(data)
 	}
 	if totalSize != d.FileSize {
 		return errors.New("文件不完整")
@@ -200,13 +234,33 @@ func (d *Downloader) mergeFileParts() error {
 	return nil
 }
 
+// 删除临时文件
+func (d *Downloader) removePartFiles() {
+	var wg sync.WaitGroup
+	for _, s := range d.DoneFilePart {
+		if s.FilePath != "" {
+			wg.Add(1)
+			go func (filePath string) {
+				defer wg.Done()
+				if err := os.Remove(filePath); err != nil {
+					log.Println(filePath, "remove failed, err:", err)
+				}
+			}(s.FilePath)
+		}
+	}
+	wg.Wait()
+}
+
 //直接下载整个文件
 func (d *Downloader) downloadWhole() error {
 	log.Println("downloadWhole")
-	url := d.Link
 
 	// Get the data
-	resp, err := http.Get(url)
+	r, err := d.getNewRequest("GET")
+	if err != nil {
+		return err
+	}
+	resp, err := http.DefaultClient.Do(r)
 	if err != nil {
 		return err
 	}
