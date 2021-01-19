@@ -5,7 +5,7 @@
 ### 使用Go mod
 在您的项目中的`go.mod`文件内添加这行代码
 ```bash
-require github.com/jsyzchen/pan v0.0.3
+require github.com/jsyzchen/pan v0.0.4
 ```
 并在项目中引入`github.com/jsyzchen/pan`
 ```go
