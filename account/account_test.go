@@ -20,5 +20,5 @@ func TestAccount_Quota(t *testing.T) {
 	if err != nil {
 		t.Fail()
 	}
-	t.Logf("TestAccount_UserInfo res: %+v", res)
+	t.Logf("TestAccount_Quota res: %+v", res)
 }

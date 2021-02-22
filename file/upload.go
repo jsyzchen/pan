@@ -116,9 +116,9 @@ func (u *Uploader) Upload() (UploadResponse, error) {
 		return ret, err
 	}
 	defer file.Close()
-	buffer := make([]byte, sliceSize)
 	uploadRespChan := make(chan SuperFile2UploadResponse)
 	for i := 0; i < sliceNum; i++ {
+		buffer := make([]byte, sliceSize)
 		n, err := file.Read(buffer[:])
 		if err != nil && err != io.EOF {
 			log.Println("file.Read failed, err:", err)
@@ -127,13 +127,13 @@ func (u *Uploader) Upload() (UploadResponse, error) {
 		if n == 0 {
 			break
 		}
-		go func(partSeq int) {
-			uploadResp, err := u.SuperFile2Upload(uploadID, partSeq, buffer[0:n])
+		go func(partSeq int, partByte []byte) {
+			uploadResp, err := u.SuperFile2Upload(uploadID, partSeq, partByte)
 			uploadRespChan <- uploadResp
 			if err != nil {
-				log.Printf("SuperFile2UploadFailed, partseq[%d] err[%+v]", partSeq, err)
+				log.Printf("SuperFile2UploadFailed, partseq[%d] err[%v]", partSeq, err)
 			}
-		}(i)
+		}(i, buffer[0:n])
 	}
 
 	blockList := make([]string, sliceNum)
@@ -209,7 +209,6 @@ func (u *Uploader) PreCreate() (PreCreateResponse, error) {
 	body := v.Encode()
 
 	requestUrl := conf.OpenApiDomain + PreCreateUri + "&access_token=" + u.AccessToken
-
 	headers := make(map[string]string)
 	resp, err := httpclient.Post(requestUrl, headers, body)
 	if err != nil {
