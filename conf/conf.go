@@ -3,13 +3,13 @@ package conf
 type PcsResponseBase struct {
 	ErrorCode int  	 `json:"error_code"`
 	ErrorMsg  string `json:"error_msg"`
-	RequestID int `json:"request_id"`
+	RequestID uint64 `json:"request_id"`
 }
 
 type CloudDiskResponseBase struct {
 	ErrorCode int  	 `json:"errno"`
 	ErrorMsg  string `json:"errmsg"`
-	RequestID int `json:"request_id"`
+	RequestID uint64 `json:"request_id"`
 }
 
 type TestDataConfig struct {
@@ -26,7 +26,7 @@ type TestDataConfig struct {
 	TranscodingType string
 }
 
-const Version = "0.0.5"
+const Version = "0.0.6"
 
 const (
 	BaiduOpenApiDomain = "https://openapi.baidu.com"
