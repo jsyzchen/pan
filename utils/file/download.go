@@ -109,8 +109,10 @@ func (d *Downloader) Download() error {
 
 	var wg sync.WaitGroup
 	isFailed := false
+	sem := make(chan int, 10) //限制并发数，以防大文件下载导致占用服务器大量网络宽带和磁盘io
 	for _, job := range jobs {
 		wg.Add(1)
+		sem <- 1 //当通道已满的时候将被阻塞
 		go func(job Part) {
 			defer wg.Done()
 			err := d.downloadPart(job)
@@ -118,6 +120,7 @@ func (d *Downloader) Download() error {
 				log.Println("下载文件失败:", err, job)
 				isFailed = true //TODO 可能会有问题
 			}
+			<-sem
 		}(job)
 	}
 	wg.Wait()

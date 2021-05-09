@@ -85,6 +85,7 @@ func (u *Uploader) Upload() (UploadResponse, error) {
 		ret.RequestID = preCreateRes.RequestID
 		return ret, err
 	}
+
 	if preCreateRes.ReturnType == 2 {//云端已存在相同文件，直接上传成功，无需请求后面的分片上传和创建文件接口
 		preCreateRes.Info.ErrorCode = preCreateRes.ErrorCode
 		preCreateRes.Info.ErrorMsg = preCreateRes.ErrorMsg
@@ -116,7 +117,8 @@ func (u *Uploader) Upload() (UploadResponse, error) {
 		return ret, err
 	}
 	defer file.Close()
-	uploadRespChan := make(chan SuperFile2UploadResponse)
+	uploadRespChan := make(chan SuperFile2UploadResponse, sliceNum)
+	sem := make(chan int, 10) //限制并发数，以防大文件上传导致占用服务器大量内存
 	for i := 0; i < sliceNum; i++ {
 		buffer := make([]byte, sliceSize)
 		n, err := file.Read(buffer[:])
@@ -124,22 +126,24 @@ func (u *Uploader) Upload() (UploadResponse, error) {
 			log.Println("file.Read failed, err:", err)
 			return ret, err
 		}
-		if n == 0 {
+		if n == 0 { //文件已读取结束
 			break
 		}
+
+		sem <- 1 //当通道已满的时候将被阻塞
 		go func(partSeq int, partByte []byte) {
 			uploadResp, err := u.SuperFile2Upload(uploadID, partSeq, partByte)
 			uploadRespChan <- uploadResp
 			if err != nil {
 				log.Printf("SuperFile2UploadFailed, partseq[%d] err[%v]", partSeq, err)
 			}
+			<-sem
 		}(i, buffer[0:n])
 	}
 
 	blockList := make([]string, sliceNum)
 	for i := 0; i < sliceNum; i++ {
 		uploadResp := <-uploadRespChan
-
 		if uploadResp.ErrorCode != 0 {//有部分文件上传失败
 			log.Print("superfile2 upload part failed")
 			ret.ErrorCode = uploadResp.ErrorCode
@@ -179,11 +183,11 @@ func (u *Uploader) PreCreate() (PreCreateResponse, error) {
 	fileSize := fileInfo.Size
 	fileMd5 := fileInfo.Md5
 
-	sliceMd5, err := u.getSliceMd5()
-	if err != nil {
-		log.Println("getSliceMd5 failed, err:", err)
-		return ret, err
-	}
+	//sliceMd5, err := u.getSliceMd5()
+	//if err != nil {
+	//	log.Println("getSliceMd5 failed, err:", err)
+	//	return ret, err
+	//}
 
 	blockList, err := u.getBlockList()
 	if err != nil {
@@ -205,7 +209,7 @@ func (u *Uploader) PreCreate() (PreCreateResponse, error) {
 	v.Add("rtype", "1")// 1 为只要path冲突即重命名
 	v.Add("block_list", blockListStr)
 	v.Add("content-md5", fileMd5)
-	v.Add("slice-md5", sliceMd5)
+	//v.Add("slice-md5", sliceMd5)
 	body := v.Encode()
 
 	requestUrl := conf.OpenApiDomain + PreCreateUri + "&access_token=" + u.AccessToken
