@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/bitly/go-simplejson"
 	"github.com/jsyzchen/pan/account"
 	"github.com/jsyzchen/pan/conf"
 	fileUtil "github.com/jsyzchen/pan/utils/file"
@@ -37,7 +38,7 @@ type PreCreateResponse struct {
 	Path string `json:"path"`
 	ReturnType int `json:"return_type"`
 	BlockList []int `json:"block_list"`
-	Info UploadResponse
+	Info UploadResponse `json:"info"`
 }
 
 type SuperFile2UploadResponse struct {
@@ -183,11 +184,11 @@ func (u *Uploader) PreCreate() (PreCreateResponse, error) {
 	fileSize := fileInfo.Size
 	fileMd5 := fileInfo.Md5
 
-	//sliceMd5, err := u.getSliceMd5()
-	//if err != nil {
-	//	log.Println("getSliceMd5 failed, err:", err)
-	//	return ret, err
-	//}
+	sliceMd5, err := u.getSliceMd5()
+	if err != nil {
+		log.Println("getSliceMd5 failed, err:", err)
+		return ret, err
+	}
 
 	blockList, err := u.getBlockList()
 	if err != nil {
@@ -209,7 +210,7 @@ func (u *Uploader) PreCreate() (PreCreateResponse, error) {
 	v.Add("rtype", "1")// 1 为只要path冲突即重命名
 	v.Add("block_list", blockListStr)
 	v.Add("content-md5", fileMd5)
-	//v.Add("slice-md5", sliceMd5)
+	v.Add("slice-md5", sliceMd5)
 	body := v.Encode()
 
 	requestUrl := conf.OpenApiDomain + PreCreateUri + "&access_token=" + u.AccessToken
@@ -220,7 +221,20 @@ func (u *Uploader) PreCreate() (PreCreateResponse, error) {
 		return ret, err
 	}
 
-	if err := json.Unmarshal(resp.Body, &ret); err != nil {
+	respBody := resp.Body
+	if js, err := simplejson.NewJson(respBody); err == nil {
+		if info, isExist := js.CheckGet("info"); isExist {//秒传返回的request_id有可能是科学计数法，这里将它统一转成uint64
+			//{"return_type":2,"errno":0,"info":{"size":16877488,"category":4,"fs_id":714504460793248,"request_id":1.821160071156e+17,"path":"\/apps\/\u4e66\u68af\/easy_20210726_163824.pptx","isdir":0,"mtime":1627288705,"ctime":1627288705,"md5":"44090321ds594263c8818d7c398e5017"},"request_id":182116007115598010}
+			info.Set("request_id", uint64(info.Get("request_id").MustFloat64()))
+			if respBody, err = js.Encode(); err != nil {
+				log.Println("simplejson Encode failed, err:", err)
+				return ret, err
+			}
+		}
+	}
+
+	if err := json.Unmarshal(respBody, &ret); err != nil {
+		log.Println("json.Unmarshal failed, err:", err)
 		return ret, err
 	}
 
