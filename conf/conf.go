@@ -26,8 +26,6 @@ type TestDataConfig struct {
 	TranscodingType string
 }
 
-const Version = "0.0.7"
-
 const (
 	BaiduOpenApiDomain = "https://openapi.baidu.com"
 	OpenApiDomain = "https://pan.baidu.com"
