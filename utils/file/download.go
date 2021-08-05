@@ -179,7 +179,10 @@ func (d *Downloader) downloadPart(c Part) error {
 	defer resp.Body.Close()
 	bs, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return err
+		if err != io.EOF && err != io.ErrUnexpectedEOF {//unexpected EOF 处理
+			log.Println("ioutil.ReadAll error :", err)
+			return err
+		}
 	}
 	if len(bs) != (c.To - c.From + 1) {
 		return errors.New("下载文件分片长度错误")
