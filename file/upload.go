@@ -155,7 +155,7 @@ func (u *Uploader) Upload() (UploadResponse, error) {
 
 		partSeq, err := strconv.Atoi(uploadResp.PartSeq)
 		if err != nil {
-			log.Fatalln("strconv.Atoi failed, err:", err)
+			log.Println("strconv.Atoi failed, err:", err)
 			return ret, err
 		}
 
