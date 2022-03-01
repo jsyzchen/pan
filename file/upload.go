@@ -23,52 +23,52 @@ import (
 
 type UploadResponse struct {
 	conf.CloudDiskResponseBase
-	Path      string `json:"path"`
-	Size      int    `json:"size"`
-	Ctime     int    `json:"ctime"`
-	Mtime     int    `json:"mtime"`
-	Md5       string `json:"md5"`
-	FsID      uint64 `json:"fs_id"`
-	IsDir    int    `json:"isdir"`
+	Path  string `json:"path"`
+	Size  int    `json:"size"`
+	Ctime int    `json:"ctime"`
+	Mtime int    `json:"mtime"`
+	Md5   string `json:"md5"`
+	FsID  uint64 `json:"fs_id"`
+	IsDir int    `json:"isdir"`
 }
 
 type PreCreateResponse struct {
 	conf.CloudDiskResponseBase
-	UploadID string `json:"uploadid"`
-	Path string `json:"path"`
-	ReturnType int `json:"return_type"`
-	BlockList []int `json:"block_list"`
-	Info UploadResponse `json:"info"`
+	UploadID   string         `json:"uploadid"`
+	Path       string         `json:"path"`
+	ReturnType int            `json:"return_type"`
+	BlockList  []int          `json:"block_list"`
+	Info       UploadResponse `json:"info"`
 }
 
 type SuperFile2UploadResponse struct {
 	conf.PcsResponseBase
-	Md5 string `json:"md5"`
+	Md5      string `json:"md5"`
 	UploadID string `json:"uploadid"`
-	PartSeq string `json:"partseq"`//pcsapi PHP版本返回的是int类型，Go版本返回的是string类型
+	PartSeq  string `json:"partseq"` //pcsapi PHP版本返回的是int类型，Go版本返回的是string类型
 }
 
 type LocalFileInfo struct {
-	Md5 string
+	Md5  string
 	Size int64
 }
 
 type Uploader struct {
-	AccessToken string
-	Path string
+	AccessToken   string
+	Path          string
 	LocalFilePath string
 }
 
 const (
-	PreCreateUri = "/rest/2.0/xpan/file?method=precreate"
-	CreateUri = "/rest/2.0/xpan/file?method=create"
+	PreCreateUri        = "/rest/2.0/xpan/file?method=precreate"
+	CreateUri           = "/rest/2.0/xpan/file?method=create"
 	Superfile2UploadUri = "/rest/2.0/pcs/superfile2?method=upload"
 )
 
 func NewUploader(accessToken, path, localFilePath string) *Uploader {
 	return &Uploader{
-		AccessToken: accessToken,
-		Path: handleSpecialChar(path),// 处理特殊字符
+		AccessToken:   accessToken,
+		Path:          handleSpecialChar(path), // 处理特殊字符
 		LocalFilePath: localFilePath,
 	}
 }
@@ -87,7 +87,7 @@ func (u *Uploader) Upload() (UploadResponse, error) {
 		return ret, err
 	}
 
-	if preCreateRes.ReturnType == 2 {//云端已存在相同文件，直接上传成功，无需请求后面的分片上传和创建文件接口
+	if preCreateRes.ReturnType == 2 { //云端已存在相同文件，直接上传成功，无需请求后面的分片上传和创建文件接口
 		preCreateRes.Info.ErrorCode = preCreateRes.ErrorCode
 		preCreateRes.Info.ErrorMsg = preCreateRes.ErrorMsg
 		preCreateRes.Info.RequestID = preCreateRes.RequestID
@@ -145,7 +145,7 @@ func (u *Uploader) Upload() (UploadResponse, error) {
 	blockList := make([]string, sliceNum)
 	for i := 0; i < sliceNum; i++ {
 		uploadResp := <-uploadRespChan
-		if uploadResp.ErrorCode != 0 {//有部分文件上传失败
+		if uploadResp.ErrorCode != 0 { //有部分文件上传失败
 			log.Print("superfile2 upload part failed")
 			ret.ErrorCode = uploadResp.ErrorCode
 			ret.ErrorMsg = uploadResp.ErrorMsg
@@ -155,7 +155,7 @@ func (u *Uploader) Upload() (UploadResponse, error) {
 
 		partSeq, err := strconv.Atoi(uploadResp.PartSeq)
 		if err != nil {
-			log.Fatalln("strconv.Atoi failed, err:", err)
+			log.Println("strconv.Atoi failed, err:", err)
 			return ret, err
 		}
 
@@ -206,8 +206,8 @@ func (u *Uploader) PreCreate() (PreCreateResponse, error) {
 	v.Add("path", u.Path)
 	v.Add("size", strconv.FormatInt(fileSize, 10))
 	v.Add("isdir", "0")
-	v.Add("autoinit", "1")// 固定值1
-	v.Add("rtype", "1")// 1 为只要path冲突即重命名
+	v.Add("autoinit", "1") // 固定值1
+	v.Add("rtype", "1")    // 1 为只要path冲突即重命名
 	v.Add("block_list", blockListStr)
 	v.Add("content-md5", fileMd5)
 	v.Add("slice-md5", sliceMd5)
@@ -223,7 +223,7 @@ func (u *Uploader) PreCreate() (PreCreateResponse, error) {
 
 	respBody := resp.Body
 	if js, err := simplejson.NewJson(respBody); err == nil {
-		if info, isExist := js.CheckGet("info"); isExist {//秒传返回的request_id有可能是科学计数法，这里将它统一转成uint64
+		if info, isExist := js.CheckGet("info"); isExist { //秒传返回的request_id有可能是科学计数法，这里将它统一转成uint64
 			//{"return_type":2,"errno":0,"info":{"size":16877488,"category":4,"fs_id":714504460793248,"request_id":1.821160071156e+17,"path":"\/apps\/\u4e66\u68af\/easy_20210726_163824.pptx","isdir":0,"mtime":1627288705,"ctime":1627288705,"md5":"44090321ds594263c8818d7c398e5017"},"request_id":182116007115598010}
 			info.Set("request_id", uint64(info.Get("request_id").MustFloat64()))
 			if respBody, err = js.Encode(); err != nil {
@@ -238,7 +238,7 @@ func (u *Uploader) PreCreate() (PreCreateResponse, error) {
 		return ret, err
 	}
 
-	if ret.ErrorCode != 0 {//错误码不为0
+	if ret.ErrorCode != 0 { //错误码不为0
 		return ret, errors.New(fmt.Sprintf("error_code:%d, error_msg:%s", ret.ErrorCode, ret.ErrorMsg))
 	}
 
@@ -275,7 +275,7 @@ func (u *Uploader) SuperFile2Upload(uploadID string, partSeq int, partByte []byt
 		return ret, err
 	}
 
-	if ret.ErrorCode != 0 {//错误码不为0
+	if ret.ErrorCode != 0 { //错误码不为0
 		log.Printf("upload failed, path[%s] response[%s]", path, string(resp))
 		return ret, errors.New(fmt.Sprintf("error_code:%d, error_msg:%s", ret.ErrorCode, ret.ErrorMsg))
 	}
@@ -284,7 +284,7 @@ func (u *Uploader) SuperFile2Upload(uploadID string, partSeq int, partByte []byt
 }
 
 // file create
-func (u *Uploader) Create(uploadID string, blockList []string) (UploadResponse, error){
+func (u *Uploader) Create(uploadID string, blockList []string) (UploadResponse, error) {
 	ret := UploadResponse{}
 
 	fileInfo, err := u.getFileInfo()
@@ -306,7 +306,7 @@ func (u *Uploader) Create(uploadID string, blockList []string) (UploadResponse, 
 	v.Add("block_list", blockListStr)
 	v.Add("size", strconv.FormatInt(fileInfo.Size, 10))
 	v.Add("isdir", "0")
-	v.Add("rtype", "1")//1 为只要path冲突即重命名
+	v.Add("rtype", "1") //1 为只要path冲突即重命名
 	body := v.Encode()
 
 	requestUrl := conf.OpenApiDomain + CreateUri + "&access_token=" + u.AccessToken
@@ -323,7 +323,7 @@ func (u *Uploader) Create(uploadID string, blockList []string) (UploadResponse, 
 		return ret, err
 	}
 
-	if ret.ErrorCode != 0 {//错误码不为0
+	if ret.ErrorCode != 0 { //错误码不为0
 		log.Println("file create failed, resp:", string(resp.Body))
 		return ret, errors.New(fmt.Sprintf("error_code:%d, error_msg:%s", ret.ErrorCode, ret.ErrorMsg))
 	}
@@ -336,26 +336,26 @@ func (u *Uploader) getSliceSize(fileSize int64) (int64, error) {
 	var sliceSize int64
 
 	/*
-	限制：
-		普通用户单个分片大小固定为4MB（文件大小如果小于4MB，无需切片，直接上传即可），单文件总大小上限为4G。
-		普通会员用户单个分片大小上限为16MB，单文件总大小上限为10G。
-		超级会员用户单个分片大小上限为32MB，单文件总大小上限为20G。
+		限制：
+			普通用户单个分片大小固定为4MB（文件大小如果小于4MB，无需切片，直接上传即可），单文件总大小上限为4G。
+			普通会员用户单个分片大小上限为16MB，单文件总大小上限为10G。
+			超级会员用户单个分片大小上限为32MB，单文件总大小上限为20G。
 	*/
 	//切割文件，单个分片大小暂时先固定为4M，TODO 普通会员和超级会员单个分片可以更大，需判断用户的身份
-	sliceSize = 4194304//4M
+	sliceSize = 4194304 //4M
 	accountClient := account.NewAccountClient(u.AccessToken)
 	userInfo, err := accountClient.UserInfo()
-	if err != nil {//获取失败直接用4M
+	if err != nil { //获取失败直接用4M
 		log.Println("account.UserInfo failed, err:", err)
 		return sliceSize, nil
 	}
-	if userInfo.VipType == 1 {//普通会员
-		sliceSize = 16777216//16M
-	} else if userInfo.VipType == 2 {//超级会员
-		sliceSize = 33554432//32M
+	if userInfo.VipType == 1 { //普通会员
+		sliceSize = 16777216 //16M
+	} else if userInfo.VipType == 2 { //超级会员
+		sliceSize = 33554432 //32M
 	}
 
-	if fileSize <= sliceSize {//无须切片
+	if fileSize <= sliceSize { //无须切片
 		sliceSize = fileSize
 	}
 
@@ -382,7 +382,7 @@ func (u *Uploader) getBlockList() ([]string, error) {
 		return blockList, err
 	}
 
-	if sliceSize == fileSize {//只有一个分片
+	if sliceSize == fileSize { //只有一个分片
 		blockList = append(blockList, fileMd5)
 		return blockList, nil
 	}
@@ -428,7 +428,7 @@ func (u *Uploader) getFileInfo() (LocalFileInfo, error) {
 		return info, err
 	}
 
-	info.Size= fileInfo.Size()
+	info.Size = fileInfo.Size()
 
 	fileMd5, err := php2go.Md5File(filePath)
 	if err != nil {
@@ -443,7 +443,7 @@ func (u *Uploader) getFileInfo() (LocalFileInfo, error) {
 
 // 特殊字符处理，文件名里有特殊字符时无法上传到网盘，特殊字符有'\\', '?', '|', '"', '>', '<', ':', '*',"\t","\n","\r","\0","\x0B"
 func handleSpecialChar(char string) string {
-	specialChars := []string{"\\\\", "?", "|", "\"", ">", "<", ":", "*","\t","\n","\r","\\0","\\x0B"}
+	specialChars := []string{"\\\\", "?", "|", "\"", ">", "<", ":", "*", "\t", "\n", "\r", "\\0", "\\x0B"}
 
 	newChar := char
 	for _, specialChar := range specialChars {
@@ -461,7 +461,7 @@ func handleSpecialChar(char string) string {
 func (u *Uploader) getSliceMd5() (string, error) {
 	var sliceMd5 string
 	var sliceSize int64
-	sliceSize = 262144//切割的块大小，固定为256KB
+	sliceSize = 262144 //切割的块大小，固定为256KB
 
 	filePath := u.LocalFilePath
 	fileInfo, err := u.getFileInfo()
