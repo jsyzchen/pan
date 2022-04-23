@@ -30,6 +30,7 @@ const (
 	BaiduOpenApiDomain = "https://openapi.baidu.com"
 	OpenApiDomain = "https://pan.baidu.com"
 	PcsDataDomain = "https://d.pcs.baidu.com"
+	PcsApiDomain = "https://pcs.baidu.com"
 )
 
 // 测试参数

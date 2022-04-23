@@ -15,3 +15,15 @@ func TestDownload(t *testing.T) {
 	}
 }
 
+func TestDownloaderWithPath(t *testing.T) {
+	fileDownloader := NewDownloaderWithPath(conf.TestData.AccessToken, conf.TestData.Path, conf.TestData.LocalFilePath)
+	err := fileDownloader.Download()
+	if err != nil {
+		t.Fail()
+	} else {
+		t.Logf("TestDownload Success")
+	}
+}
+
+
+

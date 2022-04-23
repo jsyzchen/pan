@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/jsyzchen/pan/conf"
 	"github.com/jsyzchen/pan/file"
 )
 
@@ -23,8 +24,17 @@ func main() {
 	fsID = 759719327699432
 	fileDownloader = file.NewDownloaderWithFsID(accessToken, fsID, localFilePath)
 	if err := fileDownloader.Download(); err != nil {
-		fmt.Println("2.fileDownloader.Download failed, err:", err)
+		fmt.Println("2.fileDownloader.DownloadWithFsID failed, err:", err)
 		return
 	}
 	fmt.Println("2.fileDownloader.Download success")
+
+	// 方式3：通过文件路径下载，非开放平台公开接口，生产环境谨慎使用
+	fileDownloader = file.NewDownloaderWithPath(conf.TestData.AccessToken, conf.TestData.Path, conf.TestData.LocalFilePath)
+	err := fileDownloader.Download()
+	if err != nil {
+		fmt.Println("3.fileDownloader.DownloaderWithPath failed, err:", err)
+		return
+	}
+	fmt.Println("3.fileDownloader.DownloaderWithPath success")
 }

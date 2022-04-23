@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"time"
@@ -23,6 +24,7 @@ type Downloader struct {
 	TotalPart      int //下载线程
 	DoneFilePart   []Part
 	PartSize int
+	PartCoroutineNum int //分片下载协程数
 }
 
 //filePart 文件分片
@@ -40,6 +42,8 @@ func NewFileDownloader(downloadLink, filePath string) *Downloader {
 		FileSize:       0,
 		Link:           downloadLink,
 		FilePath: 		filePath,
+		PartSize: 		10485760,// 10M
+		PartCoroutineNum:   1,
 	}
 }
 
@@ -47,8 +51,12 @@ func (d *Downloader) SetTotalPart(totalPart int)  {
 	d.TotalPart = totalPart
 }
 
-func (d *Downloader) SetPartSize(PartSize int) {
-	d.PartSize = PartSize
+func (d *Downloader) SetPartSize(partSize int) {
+	d.PartSize = partSize
+}
+
+func (d *Downloader) SetCoroutineNum(partCoroutineNum int) {
+	d.PartCoroutineNum = partCoroutineNum
 }
 
 //Run 开始下载任务
@@ -67,6 +75,8 @@ func (d *Downloader) Download() error {
 	if d.PartSize == 0 {
 		d.PartSize = 10485760 // 10M
 	}
+
+	log.Println("fileTotalSize:", fileTotalSize)
 
 	if isSupportRange == false || fileTotalSize <= d.PartSize {//不支持Range下载或者文件比较小，直接下载文件
 		err := d.downloadWhole()
@@ -89,6 +99,8 @@ func (d *Downloader) Download() error {
 	jobs := make([]Part, d.TotalPart)
 	eachSize := fileTotalSize / d.TotalPart
 
+	log.Println("eachSize:", eachSize)
+
 	for i := range jobs {
 		jobs[i].Index = i
 		if i == 0 {
@@ -109,7 +121,11 @@ func (d *Downloader) Download() error {
 
 	var wg sync.WaitGroup
 	isFailed := false
-	sem := make(chan int, 10) //限制并发数，以防大文件下载导致占用服务器大量网络宽带和磁盘io
+	partCoroutineNum := d.PartCoroutineNum
+	if len(jobs) < partCoroutineNum {
+		partCoroutineNum = len(jobs)
+	}
+	sem := make(chan int, partCoroutineNum) //限制并发数，以防大文件下载导致占用服务器大量网络宽带和磁盘io
 	for _, job := range jobs {
 		wg.Add(1)
 		sem <- 1 //当通道已满的时候将被阻塞
@@ -173,19 +189,22 @@ func (d *Downloader) downloadPart(c Part) error {
 	if err != nil {
 		return err
 	}
-	if resp.StatusCode > 299 {
-		return errors.New(fmt.Sprintf("服务器错误状态码: %v", resp.StatusCode))
-	}
 	defer resp.Body.Close()
 	bs, err := ioutil.ReadAll(resp.Body)
+	if resp.StatusCode > 299 {
+		log.Println(fmt.Sprintf("服务器错误，状态码: %v, msg:%s", resp.StatusCode, string(bs)))
+		return errors.New(fmt.Sprintf("服务器错误，状态码: %v, msg:%s", resp.StatusCode, string(bs)))
+	}
+
 	if err != nil {
 		if err != io.EOF && err != io.ErrUnexpectedEOF {//unexpected EOF 处理
 			log.Println("ioutil.ReadAll error :", err)
 			return err
 		}
 	}
+
 	if len(bs) != (c.To - c.From + 1) {
-		return errors.New("下载文件分片长度错误")
+		return errors.New(fmt.Sprintf("下载文件分片长度错误, len bs:%d", len(bs)))
 	}
 	//c.Data = bs
 
@@ -194,11 +213,15 @@ func (d *Downloader) downloadPart(c Part) error {
 	fileNamePrefix := fileName[0:len(path.Base(d.FilePath)) - len(path.Ext(d.FilePath))]
 	nowTime := time.Now().UnixNano() / 1e6
 	partFilePath := path.Join(os.TempDir(), fileNamePrefix + "_" + strconv.Itoa(c.Index) + "_" + strconv.FormatInt(nowTime, 10))
+
+	log.Printf("partFilePath[%d]:%s", c.Index, partFilePath)
+
 	f, err := os.Create(partFilePath)
 	if err != nil {
 		log.Println("open file error :", err)
 		return err
 	}
+
 	// 关闭文件
 	defer f.Close()
 	// 字节方式写入
@@ -207,6 +230,7 @@ func (d *Downloader) downloadPart(c Part) error {
 		log.Println(err)
 		return err
 	}
+
 	c.FilePath = partFilePath
 
 	d.DoneFilePart[c.Index] = c
@@ -218,6 +242,21 @@ func (d *Downloader) downloadPart(c Part) error {
 //mergeFileParts 合并下载的文件
 func (d *Downloader) mergeFileParts() error {
 	log.Println("开始合并文件")
+
+	//存储文件夹不存在的话先创建文件夹
+	fileDir := filepath.Dir(d.FilePath)
+	_, err := os.Stat(fileDir)
+	if err != nil {
+		if os.IsNotExist(err){
+			//递归创建文件夹
+			err := os.MkdirAll(fileDir, os.ModePerm)
+			if err != nil{
+				log.Println("MkdirAll failed:", err)
+				return err
+			}
+		}
+	}
+
 	mergedFile, err := os.Create(d.FilePath)
 	if err != nil {
 		return err
