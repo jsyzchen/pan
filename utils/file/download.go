@@ -18,36 +18,36 @@ import (
 
 //FileDownloader 文件下载器
 type Downloader struct {
-	FileSize       int
-	Link            string
-	FilePath 	   string
-	TotalPart      int //下载线程
-	DoneFilePart   []Part
-	PartSize int
+	FileSize         int
+	Link             string
+	FilePath         string
+	TotalPart        int //下载线程
+	DoneFilePart     []Part
+	PartSize         int
 	PartCoroutineNum int //分片下载协程数
 }
 
 //filePart 文件分片
 type Part struct {
-	Index int    //文件分片的序号
-	From  int    //开始byte
-	To    int    //解决byte
-	Data  []byte //http下载得到的文件内容
+	Index    int    //文件分片的序号
+	From     int    //开始byte
+	To       int    //解决byte
+	Data     []byte //http下载得到的文件内容
 	FilePath string //下载到本地的分片文件路径
 }
 
 //NewFileDownloader .
 func NewFileDownloader(downloadLink, filePath string) *Downloader {
 	return &Downloader{
-		FileSize:       0,
-		Link:           downloadLink,
-		FilePath: 		filePath,
-		PartSize: 		10485760,// 10M
-		PartCoroutineNum:   1,
+		FileSize:         0,
+		Link:             downloadLink,
+		FilePath:         filePath,
+		PartSize:         10485760, // 10M
+		PartCoroutineNum: 1,
 	}
 }
 
-func (d *Downloader) SetTotalPart(totalPart int)  {
+func (d *Downloader) SetTotalPart(totalPart int) {
 	d.TotalPart = totalPart
 }
 
@@ -78,18 +78,18 @@ func (d *Downloader) Download() error {
 
 	log.Println("fileTotalSize:", fileTotalSize)
 
-	if isSupportRange == false || fileTotalSize <= d.PartSize {//不支持Range下载或者文件比较小，直接下载文件
+	if isSupportRange == false || fileTotalSize <= d.PartSize { //不支持Range下载或者文件比较小，直接下载文件
 		err := d.downloadWhole()
 		return err
 	}
 
 	log.Println("downloadPart")
 
-	if d.TotalPart == 0 || fileTotalSize / d.PartSize < d.TotalPart {//减少range请求次数
+	if d.TotalPart == 0 || fileTotalSize/d.PartSize < d.TotalPart { //减少range请求次数
 		d.TotalPart = int(math.Ceil(float64(fileTotalSize) / float64(d.PartSize)))
 	}
 	maxTotalPart := 100
-	if d.TotalPart > maxTotalPart {//限制分片数量
+	if d.TotalPart > maxTotalPart { //限制分片数量
 		d.TotalPart = maxTotalPart
 	}
 
@@ -108,7 +108,7 @@ func (d *Downloader) Download() error {
 		} else {
 			jobs[i].From = jobs[i-1].To + 1
 		}
-		if i < d.TotalPart - 1 {
+		if i < d.TotalPart-1 {
 			jobs[i].To = jobs[i].From + eachSize
 		} else {
 			//the last filePart
@@ -197,7 +197,7 @@ func (d *Downloader) downloadPart(c Part) error {
 	}
 
 	if err != nil {
-		if err != io.EOF && err != io.ErrUnexpectedEOF {//unexpected EOF 处理
+		if err != io.EOF && err != io.ErrUnexpectedEOF { //unexpected EOF 处理
 			log.Println("ioutil.ReadAll error :", err)
 			return err
 		}
@@ -210,9 +210,9 @@ func (d *Downloader) downloadPart(c Part) error {
 
 	//分片文件写入到本地临时目录
 	fileName := path.Base(d.FilePath)
-	fileNamePrefix := fileName[0:len(path.Base(d.FilePath)) - len(path.Ext(d.FilePath))]
+	fileNamePrefix := fileName[0 : len(path.Base(d.FilePath))-len(path.Ext(d.FilePath))]
 	nowTime := time.Now().UnixNano() / 1e6
-	partFilePath := path.Join(os.TempDir(), fileNamePrefix + "_" + strconv.Itoa(c.Index) + "_" + strconv.FormatInt(nowTime, 10))
+	partFilePath := path.Join(os.TempDir(), fileNamePrefix+"_"+strconv.Itoa(c.Index)+"_"+strconv.FormatInt(nowTime, 10))
 
 	log.Printf("partFilePath[%d]:%s", c.Index, partFilePath)
 
@@ -247,10 +247,10 @@ func (d *Downloader) mergeFileParts() error {
 	fileDir := filepath.Dir(d.FilePath)
 	_, err := os.Stat(fileDir)
 	if err != nil {
-		if os.IsNotExist(err){
+		if os.IsNotExist(err) {
 			//递归创建文件夹
 			err := os.MkdirAll(fileDir, os.ModePerm)
-			if err != nil{
+			if err != nil {
 				log.Println("MkdirAll failed:", err)
 				return err
 			}
@@ -261,7 +261,14 @@ func (d *Downloader) mergeFileParts() error {
 	if err != nil {
 		return err
 	}
-	defer mergedFile.Close()
+	defer func() {
+		err = mergedFile.Close()
+		if err != nil {
+			log.Printf("Downloader.mergeFileParts mergedFile.Close err:%+v", err)
+			return
+		}
+	}()
+
 	totalSize := 0
 	for _, s := range d.DoneFilePart {
 		data, err := ioutil.ReadFile(s.FilePath)
@@ -276,7 +283,7 @@ func (d *Downloader) mergeFileParts() error {
 	if totalSize != d.FileSize {
 		return errors.New("文件不完整")
 	}
-	return nil
+	return err
 }
 
 // 删除临时文件
@@ -285,7 +292,7 @@ func (d *Downloader) removePartFiles() {
 	for _, s := range d.DoneFilePart {
 		if s.FilePath != "" {
 			wg.Add(1)
-			go func (filePath string) {
+			go func(filePath string) {
 				defer wg.Done()
 				if err := os.Remove(filePath); err != nil {
 					log.Println(filePath, "remove failed, err:", err)
